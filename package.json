@@ -16,12 +16,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YOUR_USERNAME/pi-observability.git"
+    "url": "git+https://github.com/imran-vz/pi-observability.git"
   },
   "bugs": {
-    "url": "https://github.com/YOUR_USERNAME/pi-observability/issues"
+    "url": "https://github.com/imran-vz/pi-observability/issues"
   },
-  "homepage": "https://github.com/YOUR_USERNAME/pi-observability#readme",
+  "homepage": "https://github.com/imran-vz/pi-observability#readme",
   "pi": {
     "extensions": [
       "./extensions/observability.ts"

@@ -34,7 +34,7 @@ pi install npm:pi-observability
 ### Via git
 
 ```bash
-pi install git:github.com/YOUR_USERNAME/pi-observability
+pi install git:github.com/imran-vz/pi-observability
 ```
 
 ### Manual
