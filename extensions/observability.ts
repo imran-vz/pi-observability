@@ -14,12 +14,20 @@
  *   /obs-toggle   - Toggle the observability footer on/off
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { AssistantMessage } from "@mariozechner/pi-ai";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import { homedir } from "node:os";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import type { AssistantMessage } from "@mariozechner/pi-ai";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
+import {
+	Key,
+	matchesKey,
+	truncateToWidth,
+	visibleWidth,
+} from "@mariozechner/pi-tui";
 
 /* ───── Types ───── */
 
@@ -67,7 +75,8 @@ function fmtDuration(ms: number): string {
 	const h = Math.floor(s / 3600);
 	const m = Math.floor((s % 3600) / 60);
 	const sec = s % 60;
-	if (h > 0) return `${h}:${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+	if (h > 0)
+		return `${h}:${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
 	return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
@@ -103,6 +112,17 @@ function getSessionStartTime(ctx: ExtensionContext): number {
 	return Date.now();
 }
 
+function alignCell(
+	str: string,
+	width: number,
+	align: "left" | "right" = "left",
+): string {
+	const vis = visibleWidth(str);
+	if (vis > width) return truncateToWidth(str, width);
+	const pad = width - vis;
+	return align === "right" ? " ".repeat(pad) + str : str + " ".repeat(pad);
+}
+
 /* ───── History persistence ───── */
 
 const HISTORY_DIR = join(homedir(), ".pi", "agent", "observability");
@@ -120,29 +140,163 @@ async function loadHistory(): Promise<SessionSummary[]> {
 
 async function saveHistory(sessions: SessionSummary[]): Promise<void> {
 	await mkdir(HISTORY_DIR, { recursive: true });
-	const text = sessions.map((s) => JSON.stringify(s)).join("\n") + "\n";
+	const text = `${sessions.map((s) => JSON.stringify(s)).join("\n")}\n`;
 	await writeFile(HISTORY_FILE, text, "utf8");
 }
 
 /* ───── Dashboard formatting ───── */
 
-const BOX_W = 64; // total outer width including ║ borders
-const IN_W = BOX_W - 4; // inner width: "║  " + content + "  ║"
+type Theme = {
+	fg: (color: string, text: string) => string;
+	bold: (text: string) => string;
+};
 
-function boxTop(): string {
-	return "╔" + "═".repeat(BOX_W - 2) + "╗";
-}
-function boxMid(): string {
-	return "╠" + "═".repeat(BOX_W - 2) + "╣";
-}
-function boxBot(): string {
-	return "╚" + "═".repeat(BOX_W - 2) + "╝";
-}
-function boxLine(text: string): string {
-	const visible = visibleWidth(text);
-	let pad = IN_W - visible;
-	if (pad < 0) pad = 0;
-	return "║  " + text + " ".repeat(pad) + "  ║";
+function buildDashboard(
+	state: SessionState,
+	ctx: ExtensionContext,
+	branch: string | null,
+	history: SessionSummary[],
+	termWidth: number,
+	theme: Theme,
+): string[] {
+	const runtime = Date.now() - state.startTime;
+	const totalIn = state.turns.reduce((s, t) => s + t.inputTokens, 0);
+	const totalOut = state.turns.reduce((s, t) => s + t.outputTokens, 0);
+	const totalCost = state.turns.reduce((s, t) => s + t.cost, 0);
+
+	const B = (s: string) => theme.fg("border", s);
+	const lines: string[] = [];
+
+	// ── Summary Card ──
+	const summaryLines = [
+		theme.bold("Agent Observability Dashboard"),
+		`Runtime: ${fmtDuration(runtime)}    Dir: ${shortenPath(ctx.cwd)}`,
+		branch
+			? `Branch: ${branch}    Model: ${ctx.model?.id ?? "none"}`
+			: `Model: ${ctx.model?.id ?? "none"}`,
+		`Tokens: ↑${fmtTokens(totalIn)} ↓${fmtTokens(totalOut)}`,
+		`Cost: $${totalCost.toFixed(6)}`,
+	];
+	const summaryW = Math.min(
+		Math.max(...summaryLines.map((c) => visibleWidth(c))) + 4,
+		termWidth,
+	);
+	const inner = summaryW - 4;
+	const padSummary = (text: string) => {
+		const safe = truncateToWidth(text, inner);
+		const vis = visibleWidth(safe);
+		const pad = Math.max(0, inner - vis);
+		return B("│ ") + safe + B(`${" ".repeat(pad)} │`);
+	};
+
+	lines.push(B(`┌${"─".repeat(summaryW - 2)}┐`));
+	lines.push(padSummary(summaryLines[0]));
+	lines.push(B(`├${"─".repeat(summaryW - 2)}┤`));
+	for (let i = 1; i < summaryLines.length; i++) {
+		lines.push(padSummary(summaryLines[i]));
+	}
+	lines.push(B(`└${"─".repeat(summaryW - 2)}┘`));
+
+	// ── Turns Table ──
+	if (state.turns.length > 0) {
+		lines.push("");
+		lines.push(
+			`  ${theme.bold(theme.fg("accent", `TURNS  (${state.turns.length})`))}`,
+		);
+
+		const headers = ["#", "Input", "Output", "Time", "TPS", "Cost", "Model"];
+		const rows = state.turns.map((t, i) => [
+			`${i + 1}`,
+			`↑${fmtTokens(t.inputTokens)}`,
+			`↓${fmtTokens(t.outputTokens)}`,
+			fmtDuration(t.durationMs),
+			`${t.tps.toFixed(1)}`,
+			`$${t.cost.toFixed(2)}`,
+			t.model,
+		]);
+
+		const colW = headers.map((h, i) =>
+			Math.max(visibleWidth(h), ...rows.map((r) => visibleWidth(r[i]))),
+		);
+		const tableW = colW.reduce((a, b) => a + b, 0) + 2 * (colW.length - 1) + 2;
+		if (tableW > termWidth && colW[colW.length - 1]! > 10) {
+			colW[colW.length - 1] = Math.max(
+				10,
+				colW[colW.length - 1]! - (tableW - termWidth),
+			);
+		}
+
+		const pad = "  ";
+		const hdr = `  ${headers.map((h, i) => alignCell(h, colW[i]!)).join(pad)}`;
+		lines.push(theme.fg("dim", hdr));
+		lines.push(B(`  ${"─".repeat(visibleWidth(hdr) - 2)}`));
+		for (const row of rows) {
+			const cells = row.map((c, i) =>
+				alignCell(c, colW[i]!, i === 0 || i >= 3 ? "left" : "right"),
+			);
+			lines.push(`  ${cells.join(pad)}`);
+		}
+	}
+
+	// ── History Table ──
+	if (history.length > 0) {
+		lines.push("");
+		lines.push(`  ${theme.bold(theme.fg("accent", "LAST 10 SESSIONS"))}`);
+
+		const headers = [
+			"When",
+			"Duration",
+			"Turns",
+			"Input",
+			"Output",
+			"Cost",
+			"Model",
+		];
+		const rows = history
+			.slice()
+			.reverse()
+			.map((h) => {
+				const date = new Date(h.endedAt).toLocaleDateString("en-US", {
+					month: "short",
+					day: "numeric",
+					hour: "2-digit",
+					minute: "2-digit",
+				});
+				return [
+					date,
+					fmtDuration(h.runtimeMs),
+					`${h.turns}`,
+					`↑${fmtTokens(h.inputTokens)}`,
+					`↓${fmtTokens(h.outputTokens)}`,
+					`$${h.cost.toFixed(2)}`,
+					h.model,
+				];
+			});
+
+		const colW = headers.map((h, i) =>
+			Math.max(visibleWidth(h), ...rows.map((r) => visibleWidth(r[i]))),
+		);
+		const tableW = colW.reduce((a, b) => a + b, 0) + 2 * (colW.length - 1) + 2;
+		if (tableW > termWidth && colW[colW.length - 1]! > 10) {
+			colW[colW.length - 1] = Math.max(
+				10,
+				colW[colW.length - 1]! - (tableW - termWidth),
+			);
+		}
+
+		const pad = "  ";
+		const hdr = `  ${headers.map((h, i) => alignCell(h, colW[i]!)).join(pad)}`;
+		lines.push(theme.fg("dim", hdr));
+		lines.push(B(`  ${"─".repeat(visibleWidth(hdr) - 2)}`));
+		for (const row of rows) {
+			const cells = row.map((c, i) =>
+				alignCell(c, colW[i]!, i === 0 || i >= 2 ? "left" : "right"),
+			);
+			lines.push(`  ${cells.join(pad)}`);
+		}
+	}
+
+	return lines;
 }
 
 /* ───── Extension ───── */
@@ -202,7 +356,8 @@ export default function (pi: ExtensionAPI) {
 			}
 		}
 
-		const tps = duration > 0 && outputTokens >= 0 ? outputTokens / (duration / 1000) : 0;
+		const tps =
+			duration > 0 && outputTokens >= 0 ? outputTokens / (duration / 1000) : 0;
 
 		const record: TurnRecord = {
 			turnIndex: event.turnIndex,
@@ -236,7 +391,6 @@ export default function (pi: ExtensionAPI) {
 		try {
 			const result = await pi.exec("git", ["branch", "--show-current"], {
 				cwd: ctx.cwd,
-				throwOnError: false,
 			});
 			branch = result.stdout?.trim() || null;
 		} catch {
@@ -272,7 +426,6 @@ export default function (pi: ExtensionAPI) {
 				try {
 					const result = await pi.exec("git", ["diff", "--numstat"], {
 						cwd: ctx.cwd,
-						throwOnError: false,
 					});
 					if (result.code !== 0 || !result.stdout) {
 						diffAdded = 0;
@@ -341,16 +494,23 @@ export default function (pi: ExtensionAPI) {
 
 					const ctxUsage = ctx.getContextUsage();
 					const segCtx = ctxUsage
-						? theme.fg("dim", `ctx ${fmtTokens(ctxUsage.tokens)}/${fmtTokens(ctxUsage.contextWindow)}`)
+						? theme.fg(
+								"dim",
+								`ctx ${fmtTokens(ctxUsage.tokens || 0)}/${fmtTokens(ctxUsage.contextWindow)}`,
+							)
 						: "";
 
-					const segTokens = theme.fg("dim", `↑${fmtTokens(totalIn)} ↓${fmtTokens(totalOut)}`);
+					const segTokens = theme.fg(
+						"dim",
+						`↑${fmtTokens(totalIn)} ↓${fmtTokens(totalOut)}`,
+					);
 					const segCost = theme.fg("dim", `$${totalCost.toFixed(4)}`);
 
 					let segTps = "";
 					if (state.isStreaming && state.currentTurnStartTime) {
 						const elapsed = (Date.now() - state.currentTurnStartTime) / 1000;
-						const liveTps = elapsed > 0 ? state.currentTurnUpdateCount / elapsed : 0;
+						const liveTps =
+							elapsed > 0 ? state.currentTurnUpdateCount / elapsed : 0;
 						segTps = theme.fg("accent", `⚡ ${liveTps.toFixed(1)} tok/s`);
 					} else if (state.turns.length > 0) {
 						const last = state.turns[state.turns.length - 1];
@@ -359,7 +519,9 @@ export default function (pi: ExtensionAPI) {
 
 					const segModel = theme.fg("dim", model);
 
-					const leftRaw = [segRuntime, segCtx, segTokens, segCost, segTps].filter(Boolean).join("  ");
+					const leftRaw = [segRuntime, segCtx, segTokens, segCost, segTps]
+						.filter(Boolean)
+						.join("  ");
 					const leftW = visibleWidth(leftRaw);
 					const rightW = visibleWidth(segModel);
 
@@ -368,7 +530,7 @@ export default function (pi: ExtensionAPI) {
 					if (gap >= 1) {
 						line2 = leftRaw + " ".repeat(gap) + segModel;
 					} else {
-						line2 = leftRaw + " " + segModel;
+						line2 = `${leftRaw} ${segModel}`;
 					}
 					line2 = truncateToWidth(line2, width);
 
@@ -385,84 +547,59 @@ export default function (pi: ExtensionAPI) {
 	/* ─── Commands ─── */
 
 	pi.registerCommand("obs", {
-		description: "Show observability dashboard (tokens, cost, TPS, runtime, history)",
+		description:
+			"Show observability dashboard (tokens, cost, TPS, runtime, history)",
 		handler: async (_args, ctx) => {
-			const lines: string[] = [];
-			const runtime = Date.now() - state.startTime;
-
 			const branchResult = await pi.exec("git", ["branch", "--show-current"], {
 				cwd: ctx.cwd,
-				throwOnError: false,
 			});
 			const branch = branchResult.stdout?.trim() || null;
-
-			const totalIn = state.turns.reduce((s, t) => s + t.inputTokens, 0);
-			const totalOut = state.turns.reduce((s, t) => s + t.outputTokens, 0);
-			const totalCost = state.turns.reduce((s, t) => s + t.cost, 0);
-
-			// ── Current Session ──
-			lines.push("");
-			lines.push(boxTop());
-			lines.push(boxLine("🕵️  Agent Observability Dashboard"));
-			lines.push(boxMid());
-			lines.push(boxLine(`Runtime: ${fmtDuration(runtime)}`));
-			lines.push(boxLine(`Dir: ${shortenPath(ctx.cwd)}`));
-			if (branch) lines.push(boxLine(`Branch: ${branch}`));
-			lines.push(boxLine(`Model: ${ctx.model?.id ?? "none"}`));
-			lines.push(boxMid());
-			lines.push(boxLine(`Tokens: ↑${fmtTokens(totalIn)} ↓${fmtTokens(totalOut)}`));
-			lines.push(boxLine(`Cost: $${totalCost.toFixed(6)}`));
-
-			if (state.turns.length > 0) {
-				lines.push(boxMid());
-				lines.push(boxLine("Turns:"));
-				for (let i = 0; i < state.turns.length; i++) {
-					const t = state.turns[i];
-					const parts = [
-						`#${i + 1}`,
-						`↑${fmtTokens(t.inputTokens)}`,
-						`↓${fmtTokens(t.outputTokens)}`,
-						fmtDuration(t.durationMs),
-						`${t.tps.toFixed(1)}/s`,
-						`$${t.cost.toFixed(2)}`,
-						t.model.slice(0, 14),
-					];
-					lines.push(boxLine(parts.join("  ")));
-				}
-			}
-			lines.push(boxBot());
-
-			// ── History ──
 			const history = await loadHistory();
-			if (history.length > 0) {
-				lines.push("");
-				lines.push(boxTop());
-				lines.push(boxLine("📜 Last 10 Sessions"));
-				lines.push(boxMid());
-				for (const h of history.slice().reverse()) {
-					const date = new Date(h.endedAt).toLocaleDateString("en-US", {
-						month: "short",
-						day: "numeric",
-						hour: "2-digit",
-						minute: "2-digit",
-					});
-					const parts = [
-						date,
-						fmtDuration(h.runtimeMs),
-						`${h.turns}t`,
-						`↑${fmtTokens(h.inputTokens)}`,
-						`↓${fmtTokens(h.outputTokens)}`,
-						`$${h.cost.toFixed(2)}`,
-						h.model.slice(0, 10),
-					];
-					lines.push(boxLine(parts.join("  ")));
-				}
-				lines.push(boxBot());
-			}
 
-			lines.push("");
-			console.log(lines.join("\n"));
-			ctx.ui.notify("Observability dashboard printed to console", "info");
+			await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
+				let cachedWidth = 0;
+				let cachedLines: string[] = [];
+
+				return {
+					invalidate() {
+						cachedWidth = 0;
+						cachedLines = [];
+					},
+					handleInput(data: string) {
+						if (
+							matchesKey(data, Key.escape) ||
+							matchesKey(data, Key.enter) ||
+							matchesKey(data, Key.space)
+						) {
+							done();
+						}
+					},
+					render(width: number): string[] {
+						if (cachedWidth === width && cachedLines.length > 0) {
+							return cachedLines;
+						}
+
+						cachedLines = buildDashboard(
+							state,
+							ctx,
+							branch,
+							history,
+							width,
+							theme,
+						);
+
+						// Add hint at bottom
+						const hint = theme.fg("dim", "Press ESC or Enter to close");
+						const hintVisible = visibleWidth(hint);
+						const pad = Math.max(0, width - hintVisible);
+						cachedLines.push("");
+						cachedLines.push(hint + " ".repeat(pad));
+
+						cachedWidth = width;
+						return cachedLines;
+					},
+				};
+			});
 		},
 	});
 
