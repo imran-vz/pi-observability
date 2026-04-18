@@ -1,0 +1,41 @@
+{
+  "name": "pi-observability",
+  "version": "1.0.0",
+  "description": "Live observability dashboard for pi coding agent sessions — tokens, cost, TPS, runtime, git stats, and context usage",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "observability",
+    "dashboard",
+    "tokens",
+    "cost-tracking",
+    "tps",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YOUR_USERNAME/pi-observability.git"
+  },
+  "bugs": {
+    "url": "https://github.com/YOUR_USERNAME/pi-observability/issues"
+  },
+  "homepage": "https://github.com/YOUR_USERNAME/pi-observability#readme",
+  "pi": {
+    "extensions": [
+      "./extensions/observability.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-tui": "*"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-coding-agent": "^0.1.0",
+    "@mariozechner/pi-ai": "^0.1.0",
+    "@mariozechner/pi-tui": "^0.1.0",
+    "typescript": "^5.4.0"
+  }
+}
