@@ -22,6 +22,15 @@
     "url": "https://github.com/imran-vz/pi-observability/issues"
   },
   "homepage": "https://github.com/imran-vz/pi-observability#readme",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev:link": "node -e \"const fs=require('fs'),path=require('path'),src=path.resolve('extensions/observability.ts'),dest=path.join(require('os').homedir(),'.pi/agent/extensions/observability.ts');fs.existsSync(dest)&&fs.unlinkSync(dest);fs.symlinkSync(src,dest);console.log('Linked to',dest);\"",
+    "dev:unlink": "node -e \"const fs=require('fs'),path=require('path'),dest=path.join(require('os').homedir(),'.pi/agent/extensions/observability.ts');fs.existsSync(dest)&&(fs.unlinkSync(dest),console.log('Unlinked',dest));\"",
+    "version:patch": "npm version patch && git push --follow-tags",
+    "version:minor": "npm version minor && git push --follow-tags",
+    "version:major": "npm version major && git push --follow-tags",
+    "publish:pkg": "npm publish"
+  },
   "pi": {
     "extensions": [
       "./extensions/observability.ts"
