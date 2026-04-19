@@ -18,12 +18,22 @@ A [pi](https://github.com/mariozechner/pi) extension that replaces the default f
 
 ## Preview
 
+### Screed recording
+
+<video src="./output.mp4" controls muted playsinline width="100%"></video>
+
+If the embedded player doesn't render in your Markdown viewer, [download or open the recording directly](./output.mp4).
+
 ### Footer
 
 ```
 ~/projects/my-app (main)  +42 -7
 ⏱ 12:34  ctx 4.2k/200k  ↑1.2k ↓3.4k  $0.0042  ⚡ 45.2 tok/s      claude-sonnet-4
 ```
+
+### Git diff in the status bar
+
+![Git diff in the footer status bar](./diff.png)
 
 ### Dashboard (`/obs`)
 
