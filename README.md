@@ -20,9 +20,11 @@ A [pi](https://github.com/mariozechner/pi) extension that replaces the default f
 
 ### Screed recording
 
-<video src="./output.mp4" controls muted playsinline width="100%"></video>
+> GitHub does not render inline MP4 players in `README.md`. Click the preview image below to open the recording.
 
-If the embedded player doesn't render in your Markdown viewer, [download or open the recording directly](./output.mp4).
+[![Open the screed recording](./demo-thumbnail.jpg)](./output.mp4)
+
+[Open the recording directly](./output.mp4)
 
 ### Footer
 
