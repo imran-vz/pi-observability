@@ -5,7 +5,7 @@
  * - Session input/output tokens & cost
  * - Live TPS during streaming (chunk-based estimate)
  * - Session runtime
- * - Current model & git branch
+ * - Current model, thinking level, fast mode & git branch
  * - Git diff stats (added/removed lines)
  * - Context usage (current/max)
  *
@@ -21,6 +21,7 @@ import type { AssistantMessage } from "@mariozechner/pi-ai";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
+	Theme as PiTheme,
 } from "@mariozechner/pi-coding-agent";
 import {
 	Key,
@@ -53,6 +54,9 @@ interface SessionState {
 	currentTurnUpdateCount: number;
 	isStreaming: boolean;
 	footerEnabled: boolean;
+	fastModeSupported: boolean;
+	fastModeEnabled: boolean;
+	serviceTier: string | null;
 }
 
 interface SessionSummary {
@@ -123,6 +127,31 @@ function alignCell(
 	return align === "right" ? " ".repeat(pad) + str : str + " ".repeat(pad);
 }
 
+function getStringProp(value: unknown, key: string): string | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const prop = (value as Record<string, unknown>)[key];
+	return typeof prop === "string" ? prop : undefined;
+}
+
+function getServiceTierFromPayload(payload: unknown): string | null {
+	const tier =
+		getStringProp(payload, "service_tier") ??
+		getStringProp(payload, "serviceTier");
+	return tier?.trim() || null;
+}
+
+function supportsFastMode(ctx: ExtensionContext): boolean {
+	const model = ctx.model;
+	if (!model) return false;
+
+	return (
+		model.api === "openai-codex-responses" &&
+		(model.provider === "openai-codex" ||
+			model.provider === "openai" ||
+			model.id.toLowerCase().includes("gpt-5.5"))
+	);
+}
+
 /* ───── History persistence ───── */
 
 const HISTORY_DIR = join(homedir(), ".pi", "agent", "observability");
@@ -146,10 +175,7 @@ async function saveHistory(sessions: SessionSummary[]): Promise<void> {
 
 /* ───── Dashboard formatting ───── */
 
-type Theme = {
-	fg: (color: string, text: string) => string;
-	bold: (text: string) => string;
-};
+type DashboardTheme = Pick<PiTheme, "fg" | "bold">;
 
 function buildDashboard(
 	state: SessionState,
@@ -157,7 +183,7 @@ function buildDashboard(
 	branch: string | null,
 	history: SessionSummary[],
 	termWidth: number,
-	theme: Theme,
+	theme: DashboardTheme,
 ): string[] {
 	const runtime = Date.now() - state.startTime;
 	const totalIn = state.turns.reduce((s, t) => s + t.inputTokens, 0);
@@ -309,6 +335,9 @@ export default function (pi: ExtensionAPI) {
 		currentTurnUpdateCount: 0,
 		isStreaming: false,
 		footerEnabled: true,
+		fastModeSupported: false,
+		fastModeEnabled: false,
+		serviceTier: null,
 	};
 
 	/* ─── Lifecycle ─── */
@@ -319,6 +348,9 @@ export default function (pi: ExtensionAPI) {
 		state.currentTurnStartTime = null;
 		state.currentTurnUpdateCount = 0;
 		state.isStreaming = false;
+		state.fastModeSupported = supportsFastMode(ctx);
+		state.fastModeEnabled = false;
+		state.serviceTier = null;
 
 		if (state.footerEnabled && ctx.hasUI) {
 			setupFooter(ctx);
@@ -329,6 +361,18 @@ export default function (pi: ExtensionAPI) {
 		state.currentTurnStartTime = Date.now();
 		state.currentTurnUpdateCount = 0;
 		state.isStreaming = true;
+	});
+
+	pi.on("model_select", async (_event, ctx) => {
+		state.fastModeSupported = supportsFastMode(ctx);
+		state.fastModeEnabled = false;
+		state.serviceTier = null;
+	});
+
+	pi.on("before_provider_request", async (event, ctx) => {
+		state.serviceTier = getServiceTierFromPayload(event.payload)?.toLowerCase() ?? null;
+		state.fastModeEnabled = state.serviceTier === "fast";
+		state.fastModeSupported = supportsFastMode(ctx) || state.fastModeEnabled;
 	});
 
 	pi.on("message_update", async (_event, _ctx) => {
@@ -489,7 +533,7 @@ export default function (pi: ExtensionAPI) {
 					const line1Raw = theme.fg("dim", `${cwd}${branchPart}`) + diffPart;
 					const line1 = truncateToWidth(line1Raw, width);
 
-					// ── Line 2: runtime, context, tokens, cost, TPS, model ──
+					// ── Line 2: runtime, context, tokens, cost, TPS, model/thinking/fast mode ──
 					const segRuntime = theme.fg("dim", `⏱ ${fmtDuration(runtime)}`);
 
 					const ctxUsage = ctx.getContextUsage();
@@ -517,7 +561,12 @@ export default function (pi: ExtensionAPI) {
 						segTps = theme.fg("accent", `⚡ ${last.tps.toFixed(1)} tok/s`);
 					}
 
-					const segModel = theme.fg("dim", model);
+					const thinkingLevel = pi.getThinkingLevel();
+					const modelParts = [model, thinkingLevel];
+					if (state.fastModeSupported && state.fastModeEnabled) {
+						modelParts.push("fast");
+					}
+					const segModel = theme.fg("dim", modelParts.join(":"));
 
 					const leftRaw = [segRuntime, segCtx, segTokens, segCost, segTps]
 						.filter(Boolean)
@@ -609,7 +658,7 @@ export default function (pi: ExtensionAPI) {
 			state.footerEnabled = !state.footerEnabled;
 			if (state.footerEnabled) {
 				setupFooter(ctx);
-				ctx.ui.notify("Observability footer enabled", "success");
+				ctx.ui.notify("Observability footer enabled", "info");
 			} else {
 				teardownFooter(ctx);
 				ctx.ui.notify("Observability footer disabled", "info");

@@ -8,7 +8,7 @@ A [pi](https://github.com/mariozechner/pi) extension that replaces the default f
   - Session input/output tokens & estimated cost
   - Live TPS (tokens per second) during streaming
   - Session runtime
-  - Current model & git branch
+  - Current model, thinking level, fast mode & git branch
   - Git diff stats (added/removed lines)
   - Context usage (current / max)
 
@@ -30,7 +30,7 @@ A [pi](https://github.com/mariozechner/pi) extension that replaces the default f
 
 ```
 ~/projects/my-app (main)  +42 -7
-⏱ 12:34  ctx 4.2k/200k  ↑1.2k ↓3.4k  $0.0042  ⚡ 45.2 tok/s      claude-sonnet-4
+⏱ 12:34  ctx 4.2k/200k  ↑1.2k ↓3.4k  $0.0042  ⚡ 45.2 tok/s      gpt-5.5:high:fast
 ```
 
 ### Git diff in the status bar
