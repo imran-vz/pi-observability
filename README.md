@@ -1,6 +1,6 @@
 # 🔭 pi-observability
 
-A [pi](https://github.com/mariozechner/pi) extension that replaces the default footer with a live observability bar and provides a full dashboard command.
+A [pi](https://github.com/mariozechner/pi) extension that replaces the default footer with a live observability bar, provides a full dashboard command, and prints a TPS summary after each agent run.
 
 ## Features
 
@@ -13,6 +13,8 @@ A [pi](https://github.com/mariozechner/pi) extension that replaces the default f
   - Context usage (current / max)
 
 - **`/obs` command** — Full-screen TUI dashboard with per-turn breakdowns and last 10 session history. Renders through pi's native TUI (no console spam), with theme-aware borders and dynamic terminal width.
+
+- **End-of-run TPS notification** — Prints the legacy TPS summary after each agent run: output TPS, input/output tokens, cache read/write tokens, total tokens, and elapsed time.
 
 - **`/obs-toggle` command** — Toggle the live footer on/off
 
@@ -86,6 +88,10 @@ Copy `extensions/observability.ts` to `~/.pi/agent/extensions/observability.ts` 
 |---------|-------------|
 | `/obs` | Open full observability dashboard in TUI overlay |
 | `/obs-toggle` | Toggle the observability footer on/off |
+
+## Migration from TPS
+
+The standalone TPS extension is no longer required. pi-observability now includes its end-of-run TPS notification, so remove `~/.pi/agent/extensions/tps.ts` if it is installed to avoid duplicate notifications.
 
 ## Requirements
 

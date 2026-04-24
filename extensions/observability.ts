@@ -9,6 +9,9 @@
  * - Git diff stats (added/removed lines)
  * - Context usage (current/max)
  *
+ * It also prints the legacy TPS summary notification at the end of each
+ * agent run, so the standalone TPS extension is no longer needed.
+ *
  * Commands:
  *   /obs          - Print full observability dashboard + last 10 sessions
  *   /obs-toggle   - Toggle the observability footer on/off
@@ -52,6 +55,7 @@ interface SessionState {
 	turns: TurnRecord[];
 	currentTurnStartTime: number | null;
 	currentTurnUpdateCount: number;
+	agentStartTime: number | null;
 	isStreaming: boolean;
 	footerEnabled: boolean;
 	fastModeSupported: boolean;
@@ -131,6 +135,14 @@ function getStringProp(value: unknown, key: string): string | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const prop = (value as Record<string, unknown>)[key];
 	return typeof prop === "string" ? prop : undefined;
+}
+
+function isAssistantMessage(message: unknown): message is AssistantMessage {
+	return (
+		!!message &&
+		typeof message === "object" &&
+		(message as { role?: unknown }).role === "assistant"
+	);
 }
 
 function getServiceTierFromPayload(payload: unknown): string | null {
@@ -333,6 +345,7 @@ export default function (pi: ExtensionAPI) {
 		turns: [],
 		currentTurnStartTime: null,
 		currentTurnUpdateCount: 0,
+		agentStartTime: null,
 		isStreaming: false,
 		footerEnabled: true,
 		fastModeSupported: false,
@@ -347,6 +360,7 @@ export default function (pi: ExtensionAPI) {
 		state.turns = scanHistoricalTurns(ctx);
 		state.currentTurnStartTime = null;
 		state.currentTurnUpdateCount = 0;
+		state.agentStartTime = null;
 		state.isStreaming = false;
 		state.fastModeSupported = supportsFastMode(ctx);
 		state.fastModeEnabled = false;
@@ -355,6 +369,10 @@ export default function (pi: ExtensionAPI) {
 		if (state.footerEnabled && ctx.hasUI) {
 			setupFooter(ctx);
 		}
+	});
+
+	pi.on("agent_start", async () => {
+		state.agentStartTime = Date.now();
 	});
 
 	pi.on("turn_start", async (_event, _ctx) => {
@@ -421,8 +439,41 @@ export default function (pi: ExtensionAPI) {
 		pi.appendEntry("obs-turn", record);
 	});
 
-	pi.on("agent_end", async (_event, _ctx) => {
+	pi.on("agent_end", async (event, ctx) => {
 		state.isStreaming = false;
+
+		if (!ctx.hasUI || state.agentStartTime === null) {
+			state.agentStartTime = null;
+			return;
+		}
+
+		const elapsedMs = Date.now() - state.agentStartTime;
+		state.agentStartTime = null;
+		if (elapsedMs <= 0) return;
+
+		let input = 0;
+		let output = 0;
+		let cacheRead = 0;
+		let cacheWrite = 0;
+		let totalTokens = 0;
+
+		for (const message of event.messages) {
+			if (!isAssistantMessage(message)) continue;
+			input += message.usage?.input ?? 0;
+			output += message.usage?.output ?? 0;
+			cacheRead += message.usage?.cacheRead ?? 0;
+			cacheWrite += message.usage?.cacheWrite ?? 0;
+			totalTokens += message.usage?.totalTokens ?? 0;
+		}
+
+		if (output <= 0) return;
+
+		const elapsedSeconds = elapsedMs / 1000;
+		const tokensPerSecond = output / elapsedSeconds;
+		ctx.ui.notify(
+			`TPS ${tokensPerSecond.toFixed(1)} tok/s. out ${output.toLocaleString()}, in ${input.toLocaleString()}, cache r/w ${cacheRead.toLocaleString()}/${cacheWrite.toLocaleString()}, total ${totalTokens.toLocaleString()}, ${elapsedSeconds.toFixed(1)}s`,
+			"info",
+		);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
