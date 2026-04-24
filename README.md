@@ -11,6 +11,8 @@ A [pi](https://github.com/mariozechner/pi) extension that replaces the default f
   - Current model, thinking level, fast mode & git branch
   - Git diff stats (added/removed lines)
   - Context usage (current / max)
+  - **Thinking level colors match pi's input field** — off/low/medium/high use the same theme colors as the editor border
+  - **Rainbow mode** — `xhigh` and `max` thinking levels render the model indicator in cycling rainbow colors
 
 - **`/obs` command** — Full-screen TUI dashboard with per-turn breakdowns and last 10 session history. Renders through pi's native TUI (no console spam), with theme-aware borders and dynamic terminal width.
 
@@ -30,9 +32,16 @@ A [pi](https://github.com/mariozechner/pi) extension that replaces the default f
 
 ### Footer
 
+Compact single-line layout that falls back to two lines when the terminal is narrow:
+
 ```
-~/projects/my-app (main)  +42 -7
-⏱ 12:34  ctx 4.2k/200k  ↑1.2k ↓3.4k  $0.0042  ⚡ 45.2 tok/s      gpt-5.5:high:fast
+gpt-5.5:high ▸ ⏱ 12:34 ▸ 📁 my-app ▸  main +42 -7 ▸ ctx 4.2k/200k ▸ ↑1.2k ↓3.4k ▸ ⚡45.2 ▸ $0.0042
+```
+
+With `xhigh` or `max` thinking, the model name renders in rainbow:
+
+```
+gpt-5.5:xhigh ▸ ⏱ 12:34 ▸ 📁 my-app ▸ ↑1.2k ↓3.4k ▸ ⚡45.2 ▸ $0.0042
 ```
 
 ### Git diff in the status bar
@@ -88,6 +97,7 @@ Copy `extensions/observability.ts` to `~/.pi/agent/extensions/observability.ts` 
 |---------|-------------|
 | `/obs` | Open full observability dashboard in TUI overlay |
 | `/obs-toggle` | Toggle the observability footer on/off |
+| `/obs-toggle-path` | Toggle between folder name and full path in footer |
 
 ## Migration from TPS
 

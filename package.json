@@ -1,6 +1,6 @@
 {
 	"name": "pi-observability",
-	"version": "1.1.0",
+	"version": "1.2.0",
 	"description": "Live observability dashboard for pi coding agent sessions — tokens, cost, TPS, runtime, git stats, and context usage",
 	"keywords": [
 		"pi-package",

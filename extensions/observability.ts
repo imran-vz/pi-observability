@@ -19,12 +19,13 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 	Theme as PiTheme,
+	ThemeColor,
 } from "@mariozechner/pi-coding-agent";
 import {
 	Key,
@@ -61,6 +62,7 @@ interface SessionState {
 	fastModeSupported: boolean;
 	fastModeEnabled: boolean;
 	serviceTier: string | null;
+	showFullPath: boolean;
 }
 
 interface SessionSummary {
@@ -98,6 +100,51 @@ function shortenPath(p: string): string {
 	const home = homedir();
 	if (home && p.startsWith(home)) return p.replace(home, "~");
 	return p;
+}
+
+function thinkingColor(level: string): ThemeColor {
+	switch (level) {
+		case "off":
+			return "thinkingOff";
+		case "minimal":
+			return "thinkingMinimal";
+		case "low":
+			return "thinkingLow";
+		case "medium":
+			return "thinkingMedium";
+		case "high":
+			return "thinkingHigh";
+		case "xhigh":
+			return "thinkingXhigh";
+		default:
+			return "thinkingOff";
+	}
+}
+
+function rainbowText(text: string): string {
+	const colors = [
+		"\x1b[38;2;255;0;0m",     // red
+		"\x1b[38;2;255;127;0m",   // orange
+		"\x1b[38;2;255;255;0m",   // yellow
+		"\x1b[38;2;0;255;0m",     // green
+		"\x1b[38;2;0;255;255m",   // cyan
+		"\x1b[38;2;0;0;255m",     // blue
+		"\x1b[38;2;255;0;255m",   // magenta
+	];
+	let result = "";
+	for (let i = 0; i < text.length; i++) {
+		result += colors[i % colors.length] + text[i];
+	}
+	result += "\x1b[0m";
+	return result;
+}
+
+function formatModelThink(model: string, level: string, theme: PiTheme): string {
+	const text = `${model}:${level}`;
+	if (level === "xhigh" || level === "max") {
+		return rainbowText(text);
+	}
+	return theme.fg(thinkingColor(level), text);
 }
 
 function scanHistoricalTurns(ctx: ExtensionContext): TurnRecord[] {
@@ -155,12 +202,11 @@ function getServiceTierFromPayload(payload: unknown): string | null {
 function supportsFastMode(ctx: ExtensionContext): boolean {
 	const model = ctx.model;
 	if (!model) return false;
-
+	if (model.api !== "openai-codex-responses") return false;
 	return (
-		model.api === "openai-codex-responses" &&
-		(model.provider === "openai-codex" ||
-			model.provider === "openai" ||
-			model.id.toLowerCase().includes("gpt-5.5"))
+		model.provider === "openai-codex" ||
+		model.provider === "openai" ||
+		model.id.toLowerCase().includes("gpt-5.5")
 	);
 }
 
@@ -351,6 +397,7 @@ export default function (pi: ExtensionAPI) {
 		fastModeSupported: false,
 		fastModeEnabled: false,
 		serviceTier: null,
+		showFullPath: false,
 	};
 
 	/* ─── Lifecycle ─── */
@@ -522,28 +569,27 @@ export default function (pi: ExtensionAPI) {
 					const result = await pi.exec("git", ["diff", "--numstat"], {
 						cwd: ctx.cwd,
 					});
-					if (result.code !== 0 || !result.stdout) {
-						diffAdded = 0;
-						diffRemoved = 0;
+					if (result.code === 0 && result.stdout) {
+						let added = 0;
+						let removed = 0;
+						for (const line of result.stdout.split("\n")) {
+							const parts = line.trim().split(/\s+/);
+							if (parts.length >= 2) {
+								const a = parseInt(parts[0], 10);
+								const b = parseInt(parts[1], 10);
+								if (!Number.isNaN(a)) added += a;
+								if (!Number.isNaN(b)) removed += b;
+							}
+						}
+						diffAdded = added;
+						diffRemoved = removed;
 						return;
 					}
-					let added = 0;
-					let removed = 0;
-					for (const line of result.stdout.split("\n")) {
-						const parts = line.trim().split(/\s+/);
-						if (parts.length >= 2) {
-							const a = parseInt(parts[0], 10);
-							const b = parseInt(parts[1], 10);
-							if (!Number.isNaN(a)) added += a;
-							if (!Number.isNaN(b)) removed += b;
-						}
-					}
-					diffAdded = added;
-					diffRemoved = removed;
 				} catch {
-					diffAdded = 0;
-					diffRemoved = 0;
+					/* ignore */
 				}
+				diffAdded = 0;
+				diffRemoved = 0;
 			}
 
 			refreshDiff();
@@ -565,29 +611,36 @@ export default function (pi: ExtensionAPI) {
 				},
 				invalidate() {},
 				render(width: number): string[] {
-					const totalIn = state.turns.reduce((s, t) => s + t.inputTokens, 0);
-					const totalOut = state.turns.reduce((s, t) => s + t.outputTokens, 0);
-					const totalCost = state.turns.reduce((s, t) => s + t.cost, 0);
-					let runtime = Date.now() - state.startTime;
-					if (!Number.isFinite(runtime) || runtime < 0) runtime = 0;
+					let totalIn = 0;
+					let totalOut = 0;
+					let totalCost = 0;
+					for (const t of state.turns) {
+						totalIn += t.inputTokens;
+						totalOut += t.outputTokens;
+						totalCost += t.cost;
+					}
+					const runtime = Date.now() - state.startTime;
 
 					const branch = footerData.getGitBranch();
 					const model = ctx.model?.id ?? "no-model";
-					const cwd = shortenPath(ctx.cwd);
-
-					// ── Line 1: folder + branch + git diff stats ──
-					const branchPart = branch ? ` (${branch})` : "";
-					const diffPart =
-						diffAdded > 0 || diffRemoved > 0
-							? `  ${theme.fg("success", `+${diffAdded}`)} ${theme.fg("error", `-${diffRemoved}`)}`
-							: "";
-					const line1Raw = theme.fg("dim", `${cwd}${branchPart}`) + diffPart;
-					const line1 = truncateToWidth(line1Raw, width);
-
-					// ── Line 2: runtime, context, tokens, cost, TPS, model/thinking/fast mode ──
-					const segRuntime = theme.fg("dim", `⏱ ${fmtDuration(runtime)}`);
-
+					const cwd = state.showFullPath ? shortenPath(ctx.cwd) : basename(ctx.cwd);
+					const thinkingLevel = pi.getThinkingLevel();
 					const ctxUsage = ctx.getContextUsage();
+					const sep = " " + theme.fg("dim", "▸") + " ";
+
+					// ── Shared segments ──
+					const segModelThink = formatModelThink(model, thinkingLevel, theme);
+					const segRuntime = theme.fg("dim", `⏱ ${fmtDuration(runtime)}`);
+					const segPwd = theme.fg("dim", `📁 ${cwd}`);
+
+					let segGit = "";
+					if (branch) {
+						segGit = theme.fg("dim", ` ${branch}`);
+						if (diffAdded > 0 || diffRemoved > 0) {
+							segGit += ` ${theme.fg("success", `+${diffAdded}`)} ${theme.fg("error", `-${diffRemoved}`)}`;
+						}
+					}
+
 					const segCtx = ctxUsage
 						? theme.fg(
 								"dim",
@@ -595,45 +648,51 @@ export default function (pi: ExtensionAPI) {
 							)
 						: "";
 
-					const segTokens = theme.fg(
-						"dim",
-						`↑${fmtTokens(totalIn)} ↓${fmtTokens(totalOut)}`,
-					);
-					const segCost = theme.fg("dim", `$${totalCost.toFixed(4)}`);
+					const segTokens = theme.fg("dim", `↑${fmtTokens(totalIn)} ↓${fmtTokens(totalOut)}`);
 
 					let segTps = "";
 					if (state.isStreaming && state.currentTurnStartTime) {
-						const elapsed = (Date.now() - state.currentTurnStartTime) / 1000;
+						const elapsed =
+							(Date.now() - state.currentTurnStartTime) / 1000;
 						const liveTps =
 							elapsed > 0 ? state.currentTurnUpdateCount / elapsed : 0;
-						segTps = theme.fg("accent", `⚡ ${liveTps.toFixed(1)} tok/s`);
+						segTps = theme.fg("accent", `⚡${liveTps.toFixed(1)}`);
 					} else if (state.turns.length > 0) {
 						const last = state.turns[state.turns.length - 1];
-						segTps = theme.fg("accent", `⚡ ${last.tps.toFixed(1)} tok/s`);
+						segTps = theme.fg("dim", `⚡${last.tps.toFixed(1)}`);
 					}
 
-					const thinkingLevel = pi.getThinkingLevel();
-					const modelParts = [model, thinkingLevel];
-					if (state.fastModeSupported && state.fastModeEnabled) {
-						modelParts.push("fast");
+					const segCost = theme.fg("dim", `$${totalCost.toFixed(4)}`);
+
+					// ── Try single line ──
+					const leftParts = [segModelThink];
+					const rightParts = [segCtx, segTokens, segTps, segCost].filter(Boolean);
+					const middleParts = [segRuntime, segPwd, segGit].filter(Boolean);
+
+					const leftStr = leftParts.join(sep);
+					const rightStr = rightParts.join(sep);
+					const middleStr = middleParts.join(sep);
+
+					const singleLine = middleStr
+						? leftStr + sep + middleStr + sep + rightStr
+						: leftStr + sep + rightStr;
+
+					if (visibleWidth(singleLine) <= width) {
+						const pad = width - visibleWidth(singleLine);
+						return [singleLine + " ".repeat(pad)];
 					}
-					const segModel = theme.fg("dim", modelParts.join(":"));
 
-					const leftRaw = [segRuntime, segCtx, segTokens, segCost, segTps]
-						.filter(Boolean)
-						.join("  ");
-					const leftW = visibleWidth(leftRaw);
-					const rightW = visibleWidth(segModel);
-
-					const gap = width - leftW - rightW;
-					let line2: string;
-					if (gap >= 1) {
-						line2 = leftRaw + " ".repeat(gap) + segModel;
-					} else {
-						line2 = `${leftRaw} ${segModel}`;
+					// ── Fallback: two lines ──
+					function fitLine(parts: string[]): string {
+						const line = parts.filter(Boolean).join(sep);
+						const w = visibleWidth(line);
+						if (w < width) return line + " ".repeat(width - w);
+						if (w > width) return truncateToWidth(line, width);
+						return line;
 					}
-					line2 = truncateToWidth(line2, width);
 
+					const line1 = fitLine([segModelThink, segPwd, segGit]);
+					const line2 = fitLine([segRuntime, segCtx, segTokens, segTps, segCost]);
 					return [line1, line2];
 				},
 			};
@@ -714,6 +773,15 @@ export default function (pi: ExtensionAPI) {
 				teardownFooter(ctx);
 				ctx.ui.notify("Observability footer disabled", "info");
 			}
+		},
+	});
+
+	pi.registerCommand("obs-toggle-path", {
+		description: "Toggle between folder name and full path in footer",
+		handler: async (_args, ctx) => {
+			state.showFullPath = !state.showFullPath;
+			const mode = state.showFullPath ? "full path" : "folder name";
+			ctx.ui.notify(`Footer path: ${mode}`, "info");
 		},
 	});
 }
