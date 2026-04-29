@@ -22,14 +22,6 @@ A [pi](https://github.com/mariozechner/pi) extension that replaces the default f
 
 ## Preview
 
-### Screed recording
-
-> GitHub does not render inline MP4 players in `README.md`, so here's a short animated preview. Click it to open the full recording.
-
-[![Animated preview of pi-observability](./demo-preview.gif)](./output.mp4)
-
-[Open the full screed recording (MP4)](./output.mp4)
-
 ### Footer
 
 Compact single-line layout that falls back to two lines when the terminal is narrow:
