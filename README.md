@@ -22,6 +22,8 @@ A [pi](https://github.com/mariozechner/pi) extension that replaces the default f
 
 ## Preview
 
+![pi-observability demo](./demo-preview.gif)
+
 ### Footer
 
 Compact single-line layout that falls back to two lines when the terminal is narrow:
@@ -35,10 +37,6 @@ With `xhigh` or `max` thinking, the model name renders in rainbow:
 ```
 gpt-5.5:xhigh ▸ ⏱ 12:34 ▸ 📁 my-app ▸ ↑1.2k ↓3.4k ▸ ⚡45.2 ▸ $0.0042
 ```
-
-### Git diff in the status bar
-
-![Git diff in the footer status bar](./diff.png)
 
 ### Dashboard (`/obs`)
 
