@@ -89,7 +89,13 @@ pi install git:github.com/imran-vz/pi-observability
 
 ### Manual
 
-Copy `extensions/observability.ts` to `~/.pi/agent/extensions/observability.ts` (or `.pi/extensions/observability.ts` for project-local).
+Copy the entire `extensions/` directory to `~/.pi/agent/extensions/` (or `.pi/extensions/` for project-local):
+
+```bash
+cp -r extensions/* ~/.pi/agent/extensions/
+```
+
+> **Note:** This extension is split into multiple files (`observability.ts` + `lib/`). Copying only the main file will break imports.
 
 ## Commands
 

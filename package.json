@@ -1,50 +1,57 @@
 {
-	"name": "pi-observability",
-	"version": "1.2.0",
-	"description": "Live observability dashboard for pi coding agent sessions — tokens, cost, TPS, runtime, git stats, and context usage",
-	"keywords": [
-		"pi-package",
-		"pi-extension",
-		"observability",
-		"dashboard",
-		"tokens",
-		"cost-tracking",
-		"tps",
-		"cli"
-	],
-	"author": "",
-	"license": "MIT",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/imran-vz/pi-observability.git"
-	},
-	"bugs": {
-		"url": "https://github.com/imran-vz/pi-observability/issues"
-	},
-	"homepage": "https://github.com/imran-vz/pi-observability#readme",
-	"scripts": {
-		"typecheck": "tsc --noEmit",
-		"dev:link": "node -e \"const fs=require('fs'),path=require('path'),src=path.resolve('extensions/observability.ts'),dest=path.join(require('os').homedir(),'.pi/agent/extensions/observability.ts');fs.existsSync(dest)&&fs.unlinkSync(dest);fs.symlinkSync(src,dest);console.log('Linked to',dest);\"",
-		"dev:unlink": "node -e \"const fs=require('fs'),path=require('path'),dest=path.join(require('os').homedir(),'.pi/agent/extensions/observability.ts');fs.existsSync(dest)&&(fs.unlinkSync(dest),console.log('Unlinked',dest));\"",
-		"version:patch": "npm version patch && git push --follow-tags",
-		"version:minor": "npm version minor && git push --follow-tags",
-		"version:major": "npm version major && git push --follow-tags",
-		"publish:pkg": "npm publish"
-	},
-	"pi": {
-		"extensions": [
-			"./extensions/observability.ts"
-		]
-	},
-	"peerDependencies": {
-		"@mariozechner/pi-coding-agent": "*",
-		"@mariozechner/pi-ai": "*",
-		"@mariozechner/pi-tui": "*"
-	},
-	"devDependencies": {
-		"@mariozechner/pi-coding-agent": "latest",
-		"@mariozechner/pi-ai": "latest",
-		"@mariozechner/pi-tui": "latest",
-		"typescript": "^5.4.0"
-	}
+  "name": "pi-observability",
+  "version": "1.3.0",
+  "description": "Live observability dashboard for pi coding agent sessions — tokens, cost, TPS, runtime, git stats, and context usage",
+  "keywords": [
+    "cli",
+    "cost-tracking",
+    "dashboard",
+    "observability",
+    "pi-extension",
+    "pi-package",
+    "tokens",
+    "tps"
+  ],
+  "homepage": "https://github.com/imran-vz/pi-observability#readme",
+  "bugs": {
+    "url": "https://github.com/imran-vz/pi-observability/issues"
+  },
+  "license": "MIT",
+  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imran-vz/pi-observability.git"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint extensions/",
+    "lint:fix": "oxlint extensions/ --fix",
+    "format": "oxfmt --write extensions/",
+    "format:check": "oxfmt --check extensions/",
+    "check": "npm run typecheck && npm run lint && npm run format:check",
+    "dev:link": "node -e \"const fs=require('fs'),path=require('path'),os=require('os'),home=os.homedir(),extDir=path.resolve('extensions'),destDir=path.join(home,'.pi/agent/extensions'),tsSrc=path.join(extDir,'observability.ts'),tsDest=path.join(destDir,'observability.ts'),libSrc=path.join(extDir,'lib'),libDest=path.join(destDir,'lib');fs.mkdirSync(destDir,{recursive:true});[tsDest,libDest].forEach(d=>{if(fs.existsSync(d)){const s=fs.lstatSync(d);s.isSymbolicLink()||s.isDirectory()?fs.rmSync(d,{recursive:true,force:true}):fs.unlinkSync(d);}});fs.symlinkSync(tsSrc,tsDest);fs.symlinkSync(libSrc,libDest);console.log('Linked',tsDest);console.log('Linked',libDest);\"",
+    "dev:unlink": "node -e \"const fs=require('fs'),path=require('path'),os=require('os'),home=os.homedir(),destDir=path.join(home,'.pi/agent/extensions'),tsDest=path.join(destDir,'observability.ts'),libDest=path.join(destDir,'lib');[tsDest,libDest].forEach(d=>{if(fs.existsSync(d)){const s=fs.lstatSync(d);s.isSymbolicLink()||s.isDirectory()?fs.rmSync(d,{recursive:true,force:true}):fs.unlinkSync(d);}console.log('Unlinked',d);});\"",
+    "version:patch": "npm version patch && git push --follow-tags",
+    "version:minor": "npm version minor && git push --follow-tags",
+    "version:major": "npm version major && git push --follow-tags",
+    "publish:pkg": "npm publish"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-ai": "latest",
+    "@mariozechner/pi-coding-agent": "latest",
+    "@mariozechner/pi-tui": "latest",
+    "oxfmt": "^0.47.0",
+    "oxlint": "^1.62.0",
+    "typescript": "^5.4.0"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/observability.ts"
+    ]
+  }
 }
