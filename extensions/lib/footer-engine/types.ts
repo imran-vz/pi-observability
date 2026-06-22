@@ -11,7 +11,8 @@ export type SegmentKey =
   | "contextNumbers"
   | "tokens"
   | "tps"
-  | "cost";
+  | "cost"
+  | "extensionStatuses";
 
 export interface FooterSettings {
   segments: Record<SegmentKey, boolean>;

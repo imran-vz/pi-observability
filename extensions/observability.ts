@@ -136,6 +136,21 @@ function getServiceTierFromPayload(payload: unknown): string | null {
   return tier?.trim().toLowerCase() || null;
 }
 
+function formatExtensionStatusLine(
+  statuses: ReadonlyMap<string, string>,
+  theme: Pick<PiTheme, "fg">,
+): string | null {
+  const values = [...statuses.values()].filter((value) => value.trim().length > 0);
+  if (values.length === 0) return null;
+  return values.join(` ${theme.fg("dim", "▸")} `);
+}
+
+function fitFooterLine(text: string, width: number): string {
+  const visible = visibleWidth(text);
+  if (visible > width) return truncateToWidth(text, width);
+  return text + " ".repeat(width - visible);
+}
+
 function isFastServiceTier(serviceTier: string | null): boolean {
   // OpenAI's actual fast/priority tier is `priority`. Older/local shims may
   // still emit `fast`, so keep accepting it for backwards-compatible display.
@@ -315,6 +330,7 @@ export default function (pi: ExtensionAPI) {
         tokens: true,
         tps: true,
         cost: true,
+        extensionStatuses: true,
       },
       contextZones: { expert: 70, warning: 85 },
     },
@@ -568,7 +584,16 @@ export default function (pi: ExtensionAPI) {
             theme,
           };
 
-          return renderFooter(input, width);
+          const lines = renderFooter(input, width);
+          if (!state.settings.segments.extensionStatuses) return lines;
+
+          const extensionStatusLine = formatExtensionStatusLine(
+            footerData.getExtensionStatuses(),
+            theme,
+          );
+          if (!extensionStatusLine) return lines;
+
+          return [...lines, fitFooterLine(extensionStatusLine, width)];
         },
       };
     });

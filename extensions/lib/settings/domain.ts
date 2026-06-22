@@ -96,7 +96,8 @@ export function updateSetting(
     case "contextNumbers":
     case "tokens":
     case "tps":
-    case "cost": {
+    case "cost":
+    case "extensionStatuses": {
       next = setSegment(next, id, value === "true");
       // Context sub-toggle dependency: if contextUsage is turned off, children are hidden
       if (id === "contextUsage" && value === "false") {
