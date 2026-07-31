@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS: SettingsConfig = {
     tokens: true,
     tps: true,
     cost: true,
+    extensionStatuses: true,
   },
   contextZones: { expert: 70, warning: 85 },
 };
@@ -32,6 +33,7 @@ export const PRESETS: Record<PresetName, Partial<Record<SegmentKey, boolean>>> =
     tokens: false,
     tps: false,
     cost: false,
+    extensionStatuses: true,
   },
   standard: {
     modelThink: true,
@@ -45,6 +47,7 @@ export const PRESETS: Record<PresetName, Partial<Record<SegmentKey, boolean>>> =
     tokens: true,
     tps: false,
     cost: true,
+    extensionStatuses: true,
   },
   verbose: {
     modelThink: true,
@@ -58,6 +61,7 @@ export const PRESETS: Record<PresetName, Partial<Record<SegmentKey, boolean>>> =
     tokens: true,
     tps: true,
     cost: true,
+    extensionStatuses: true,
   },
   performance: {
     modelThink: true,
@@ -71,6 +75,7 @@ export const PRESETS: Record<PresetName, Partial<Record<SegmentKey, boolean>>> =
     tokens: false,
     tps: true,
     cost: true,
+    extensionStatuses: true,
   },
 };
 
@@ -106,6 +111,11 @@ export const SEGMENT_METADATA: SegmentMetadata[] = [
   { id: "tokens", label: "Session Tokens", description: "Show total input/output token counts" },
   { id: "tps", label: "TPS (Tokens/Sec)", description: "Show live and last-turn TPS" },
   { id: "cost", label: "Cost", description: "Show estimated session cost" },
+  {
+    id: "extensionStatuses",
+    label: "Extension Statuses",
+    description: "Show statuses published by other extensions via setStatus()",
+  },
 ];
 
 export const ZONE_VALUE_OPTIONS = {

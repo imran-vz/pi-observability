@@ -13,6 +13,7 @@ A [pi](https://github.com/mariozechner/pi) extension that replaces the default f
   - **Session tokens** — Input/output totals
   - **Live TPS** — During streaming (chunk-based estimate)
   - **Estimated cost**
+  - **Extension statuses** — Shows status text published by other extensions through pi's `setStatus()` API
 
 - **`/obs` command** — Full-screen TUI dashboard with per-turn breakdowns and last 10 session history. Renders through pi's native TUI (no console spam), with theme-aware borders and dynamic terminal width.
 
@@ -40,6 +41,12 @@ With `xhigh` or `max` thinking, the model name renders in rainbow:
 gpt-5.5:xhigh ▸ ⏱ 12:34 ▸ 📁 my-app ▸ ↑1.2k ↓3.4k ▸ $0.0042
 ```
 
+When other extensions publish footer statuses with pi's `setStatus()` API, pi-observability renders them on an additional line so replacing the default footer does not hide extension status output:
+
+```
+codex ██████▀▀▀▀ 6d
+```
+
 #### Settings
 
 Run `/obs-settings` to open the interactive settings panel:
@@ -64,6 +71,7 @@ Individual segments you can toggle:
 - **Session Tokens** — Total input/output
 - **TPS** — Live during streaming, last-turn when idle
 - **Cost** — Estimated session cost
+- **Extension Statuses** — Status output published by other extensions through pi's `setStatus()` API
 
 Context-usage color zones (configurable):
 
