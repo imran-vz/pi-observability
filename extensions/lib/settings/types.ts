@@ -1,6 +1,7 @@
+import type { Component } from "@earendil-works/pi-tui";
+
 export type SegmentKey =
   | "modelThink"
-  | "runtime"
   | "pwd"
   | "git"
   | "contextUsage"
@@ -12,12 +13,16 @@ export type SegmentKey =
   | "cost";
 
 export type PresetName = "minimal" | "standard" | "verbose" | "performance";
+export type ClockMode = "Runtime" | "Last Prompt" | "Off";
 
 export interface SettingsConfig {
   version: number;
   preset: PresetName;
   segments: Record<SegmentKey, boolean>;
-  contextZones: { expert: number; warning: number };
+  clockMode: ClockMode;
+  cacheWindowMinutes: number;
+  contextTokenThresholds: { yellow: number; red: number };
+  endOfRunNotification: boolean;
 }
 
 export interface SettingsListItem {
@@ -25,7 +30,11 @@ export interface SettingsListItem {
   label: string;
   description: string;
   currentValue: string;
-  values: string[];
+  values?: string[];
+  submenu?: (
+    currentValue: string,
+    done: (selectedValue?: string, options?: { navigateTo?: string }) => void,
+  ) => Component;
 }
 
 export interface SettingsUpdateResult {

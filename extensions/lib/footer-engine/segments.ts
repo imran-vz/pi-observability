@@ -1,13 +1,6 @@
 import { basename } from "node:path";
 import type { SegmentRenderer } from "./types.js";
-import {
-  fmtDuration,
-  fmtTokens,
-  shortenPath,
-  thinkingColor,
-  contextUsageColor,
-  rainbowText,
-} from "./format.js";
+import { fmtDuration, fmtTokens, shortenPath, thinkingColor, rainbowText } from "./format.js";
 
 export const builtinRenderers: Record<string, SegmentRenderer> = {
   modelThink(input) {
@@ -21,7 +14,17 @@ export const builtinRenderers: Record<string, SegmentRenderer> = {
   },
 
   runtime(input) {
-    return input.theme.fg("dim", `⏱ ${fmtDuration(input.runtimeMs)}`);
+    if (input.settings.clockMode === "Off") return "";
+    if (input.settings.clockMode === "Runtime") {
+      return input.theme.fg("dim", `⏱ ${fmtDuration(input.runtimeMs)}`);
+    }
+    if (input.lastProviderRequestTime === null) {
+      return input.theme.fg("dim", "⏱ --");
+    }
+
+    const elapsed = Date.now() - input.lastProviderRequestTime;
+    const cacheWindowMs = input.settings.cacheWindowMinutes * 60_000;
+    return input.theme.fg(elapsed >= cacheWindowMs ? "error" : "dim", `⏱ ${fmtDuration(elapsed)}`);
   },
 
   pwd(input) {
@@ -65,10 +68,14 @@ export const builtinRenderers: Record<string, SegmentRenderer> = {
       text += ` ${fmtTokens(tokens)}/${fmtTokens(max)}`;
     }
 
-    return theme.fg(
-      contextUsageColor(pct, settings.contextZones.expert, settings.contextZones.warning),
-      text,
-    );
+    const color =
+      tokens >= settings.contextTokenThresholds.red
+        ? "error"
+        : tokens >= settings.contextTokenThresholds.yellow
+          ? "warning"
+          : "success";
+
+    return theme.fg(color, text);
   },
 
   tokens(input) {

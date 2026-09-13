@@ -5,7 +5,6 @@ export const DEFAULT_SETTINGS: SettingsConfig = {
   preset: "standard",
   segments: {
     modelThink: true,
-    runtime: true,
     pwd: true,
     git: true,
     contextUsage: true,
@@ -16,7 +15,10 @@ export const DEFAULT_SETTINGS: SettingsConfig = {
     tps: true,
     cost: true,
   },
-  contextZones: { expert: 70, warning: 85 },
+  clockMode: "Runtime",
+  cacheWindowMinutes: 30,
+  contextTokenThresholds: { yellow: 70_000, red: 100_000 },
+  endOfRunNotification: true,
 };
 
 export const PRESETS: Record<PresetName, Partial<Record<SegmentKey, boolean>>> = {
@@ -26,7 +28,6 @@ export const PRESETS: Record<PresetName, Partial<Record<SegmentKey, boolean>>> =
     contextProgress: true,
     contextPercentage: false,
     contextNumbers: true,
-    runtime: false,
     pwd: false,
     git: false,
     tokens: false,
@@ -35,7 +36,6 @@ export const PRESETS: Record<PresetName, Partial<Record<SegmentKey, boolean>>> =
   },
   standard: {
     modelThink: true,
-    runtime: true,
     pwd: true,
     git: true,
     contextUsage: true,
@@ -48,7 +48,6 @@ export const PRESETS: Record<PresetName, Partial<Record<SegmentKey, boolean>>> =
   },
   verbose: {
     modelThink: true,
-    runtime: true,
     pwd: true,
     git: true,
     contextUsage: true,
@@ -61,7 +60,6 @@ export const PRESETS: Record<PresetName, Partial<Record<SegmentKey, boolean>>> =
   },
   performance: {
     modelThink: true,
-    runtime: false,
     pwd: false,
     git: false,
     contextUsage: true,
@@ -80,7 +78,6 @@ export const SEGMENT_METADATA: SegmentMetadata[] = [
     label: "Model & Thinking",
     description: "Show current model and thinking level",
   },
-  { id: "runtime", label: "Runtime", description: "Show session runtime timer" },
   { id: "pwd", label: "Working Directory", description: "Show current working directory" },
   { id: "git", label: "Git Branch & Diff", description: "Show git branch and diff stats" },
   {
@@ -107,8 +104,3 @@ export const SEGMENT_METADATA: SegmentMetadata[] = [
   { id: "tps", label: "TPS (Tokens/Sec)", description: "Show live and last-turn TPS" },
   { id: "cost", label: "Cost", description: "Show estimated session cost" },
 ];
-
-export const ZONE_VALUE_OPTIONS = {
-  expert: ["60", "65", "70", "75", "80"],
-  warning: ["75", "80", "85", "90", "95"],
-};

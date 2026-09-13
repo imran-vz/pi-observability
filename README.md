@@ -54,7 +54,7 @@ Run `/obs-settings` to open the interactive settings panel:
 Individual segments you can toggle:
 
 - **Model & Thinking** — Model name + thinking level
-- **Runtime** — Session timer
+- **Clock** — Session runtime, time since the last model request, or off. In Last Prompt mode it turns red after a configurable cache window (30 minutes by default).
 - **Working Directory** — Current folder or full path (`/obs-toggle-path`)
 - **Git Branch & Diff** — Branch name + added/removed line counts
 - **Context Usage** — Master toggle with 3 sub-options:
@@ -64,14 +64,14 @@ Individual segments you can toggle:
 - **Session Tokens** — Total input/output
 - **TPS** — Live during streaming, last-turn when idle
 - **Cost** — Estimated session cost
+- **End-of-run TPS notification** — Can be enabled or disabled independently
 
-Context-usage color zones (configurable):
+The context percentage always uses the active model's context window. Enter independent token limits for the yellow and red context colors in `/obs-settings`.
 
-| Zone | Default | Color |
-|------|---------|-------|
-| Normal | ≤ 70% | Green |
-| Expert | 71–85% | Yellow |
-| Warning | > 85% | Red |
+| Setting | Default |
+|---------|---------|
+| Yellow Context Limit | 70,000 tokens |
+| Red Context Limit | 100,000 tokens |
 
 ### Dashboard (`/obs`)
 

@@ -1,11 +1,5 @@
 import { loadSettings, saveSettings } from "./storage.js";
-import {
-  applyPreset,
-  toggleSegment,
-  setSegment,
-  setZone,
-  createDefaultSettings,
-} from "./domain.js";
+import { applyPreset, toggleSegment, setSegment, createDefaultSettings } from "./domain.js";
 import type { PresetName, SegmentKey, SettingsConfig } from "./types.js";
 import type { Storage } from "../storage/index.js";
 
@@ -16,7 +10,6 @@ export interface SettingsManager {
   applyPreset(preset: PresetName): SettingsConfig;
   toggleSegment(key: SegmentKey): SettingsConfig;
   setSegment(key: SegmentKey, value: boolean): SettingsConfig;
-  setZone(key: "expert" | "warning", value: number): SettingsConfig;
 }
 
 export function createSettingsManager(storage: Storage): SettingsManager {
@@ -47,11 +40,6 @@ export function createSettingsManager(storage: Storage): SettingsManager {
 
     setSegment(key, value) {
       config = setSegment(config, key, value);
-      return structuredClone(config);
-    },
-
-    setZone(key, value) {
-      config = setZone(config, key, value);
       return structuredClone(config);
     },
   };

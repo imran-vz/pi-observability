@@ -42,12 +42,6 @@ export function thinkingColor(level: string): ThemeColor {
   }
 }
 
-export function contextUsageColor(pct: number, expert: number, warning: number): ThemeColor {
-  if (pct <= expert) return "success";
-  if (pct <= warning) return "warning";
-  return "error";
-}
-
 export function rainbowText(text: string): string {
   const colors = [
     "\x1b[38;2;255;0;0m", // red

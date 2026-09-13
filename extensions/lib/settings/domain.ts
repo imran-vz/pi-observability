@@ -1,5 +1,11 @@
 import { DEFAULT_SETTINGS, PRESETS } from "./metadata.js";
-import type { PresetName, SegmentKey, SettingsConfig, SettingsUpdateResult } from "./types.js";
+import type {
+  ClockMode,
+  PresetName,
+  SegmentKey,
+  SettingsConfig,
+  SettingsUpdateResult,
+} from "./types.js";
 
 export function createDefaultSettings(): SettingsConfig {
   return structuredClone(DEFAULT_SETTINGS);
@@ -31,24 +37,6 @@ export function setSegment(
   return next;
 }
 
-export function setZone(
-  config: SettingsConfig,
-  key: "expert" | "warning",
-  value: number,
-): SettingsConfig {
-  const next = structuredClone(config);
-  next.contextZones[key] = Math.max(0, Math.min(100, value));
-  // Ensure expert <= warning
-  if (next.contextZones.expert > next.contextZones.warning) {
-    if (key === "expert") {
-      next.contextZones.warning = next.contextZones.expert;
-    } else {
-      next.contextZones.expert = next.contextZones.warning;
-    }
-  }
-  return next;
-}
-
 export function validateSettings(raw: unknown): SettingsConfig {
   if (!raw || typeof raw !== "object") {
     return createDefaultSettings();
@@ -57,9 +45,30 @@ export function validateSettings(raw: unknown): SettingsConfig {
 
   const preset = isPresetName(r.preset) ? r.preset : DEFAULT_SETTINGS.preset;
   const segments = validateSegments(r.segments);
-  const contextZones = validateZones(r.contextZones);
+  const clockMode = isClockMode(r.clockMode)
+    ? r.clockMode
+    : getLegacyRuntimeEnabled(r.segments) === false
+      ? "Off"
+      : DEFAULT_SETTINGS.clockMode;
+  const cacheWindowMinutes = validatePositiveNumber(
+    r.cacheWindowMinutes,
+    DEFAULT_SETTINGS.cacheWindowMinutes,
+  );
+  const contextTokenThresholds = validateContextTokenThresholds(r.contextTokenThresholds);
+  const endOfRunNotification =
+    typeof r.endOfRunNotification === "boolean"
+      ? r.endOfRunNotification
+      : DEFAULT_SETTINGS.endOfRunNotification;
 
-  return { version: 1, preset, segments, contextZones };
+  return {
+    version: 1,
+    preset,
+    segments,
+    clockMode,
+    cacheWindowMinutes,
+    contextTokenThresholds,
+    endOfRunNotification,
+  };
 }
 
 export function migrateSettings(raw: unknown): SettingsConfig {
@@ -87,7 +96,6 @@ export function updateSetting(
       break;
     }
     case "modelThink":
-    case "runtime":
     case "pwd":
     case "git":
     case "contextUsage":
@@ -110,17 +118,54 @@ export function updateSetting(
       }
       break;
     }
-    case "expertZone": {
-      next = setZone(next, "expert", parseInt(value, 10));
+    case "clockMode": {
+      if (isClockMode(value)) next.clockMode = value;
       break;
     }
-    case "warningZone": {
-      next = setZone(next, "warning", parseInt(value, 10));
+    case "cacheWindowMinutes": {
+      const minutes = parsePositiveNumber(value);
+      if (minutes !== null) {
+        next.cacheWindowMinutes = minutes;
+      } else {
+        derivedUpdates.push({ id, value: `${config.cacheWindowMinutes}` });
+      }
+      break;
+    }
+    case "contextYellowTokens": {
+      const tokens = parseTokenCount(value);
+      if (tokens !== null && tokens < next.contextTokenThresholds.red) {
+        next.contextTokenThresholds.yellow = tokens;
+      } else {
+        derivedUpdates.push({ id, value: `${config.contextTokenThresholds.yellow}` });
+      }
+      break;
+    }
+    case "contextRedTokens": {
+      const tokens = parseTokenCount(value);
+      if (tokens !== null && tokens > next.contextTokenThresholds.yellow) {
+        next.contextTokenThresholds.red = tokens;
+      } else {
+        derivedUpdates.push({ id, value: `${config.contextTokenThresholds.red}` });
+      }
+      break;
+    }
+    case "endOfRunNotification": {
+      next.endOfRunNotification = value === "true";
       break;
     }
   }
 
   return { config: next, derivedUpdates };
+}
+
+function isClockMode(value: unknown): value is ClockMode {
+  return value === "Runtime" || value === "Last Prompt" || value === "Off";
+}
+
+function getLegacyRuntimeEnabled(segments: unknown): boolean | undefined {
+  if (!segments || typeof segments !== "object") return undefined;
+  const runtime = (segments as Record<string, unknown>).runtime;
+  return typeof runtime === "boolean" ? runtime : undefined;
 }
 
 function isPresetName(v: unknown): v is PresetName {
@@ -138,24 +183,34 @@ function validateSegments(raw: unknown): Record<SegmentKey, boolean> {
   return segments;
 }
 
-function validateZones(raw: unknown): { expert: number; warning: number } {
-  const zones = { ...DEFAULT_SETTINGS.contextZones };
-  if (!raw || typeof raw !== "object") return zones;
-  const r = raw as Record<string, unknown>;
-
-  if (typeof r.expert === "number") zones.expert = clamp(0, r.expert, 100);
-  if (typeof r.warning === "number") zones.warning = clamp(0, r.warning, 100);
-
-  // Ensure expert <= warning
-  if (zones.expert > zones.warning) {
-    const avg = Math.round((zones.expert + zones.warning) / 2);
-    zones.expert = avg;
-    zones.warning = avg;
+function validateContextTokenThresholds(raw: unknown): { yellow: number; red: number } {
+  if (!raw || typeof raw !== "object") {
+    return structuredClone(DEFAULT_SETTINGS.contextTokenThresholds);
   }
-
-  return zones;
+  const { yellow, red } = raw as Record<string, unknown>;
+  if (
+    typeof yellow !== "number" ||
+    typeof red !== "number" ||
+    !Number.isFinite(yellow) ||
+    !Number.isFinite(red) ||
+    yellow <= 0 ||
+    red <= yellow
+  ) {
+    return structuredClone(DEFAULT_SETTINGS.contextTokenThresholds);
+  }
+  return { yellow: Math.round(yellow), red: Math.round(red) };
 }
 
-function clamp(min: number, val: number, max: number): number {
-  return Math.max(min, Math.min(max, val));
+function parsePositiveNumber(value: string): number | null {
+  const number = Number(value.trim());
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function validatePositiveNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function parseTokenCount(value: string): number | null {
+  const tokens = Number(value.replaceAll(",", "").replaceAll("_", ""));
+  return Number.isFinite(tokens) && tokens > 0 ? Math.round(tokens) : null;
 }
