@@ -153,6 +153,74 @@ function supportsFastMode(ctx: ExtensionContext): boolean {
 
 type DashboardTheme = Pick<PiTheme, "fg" | "bold">;
 
+function renderTable(
+  headers: string[],
+  rows: string[][],
+  alignments: ("left" | "right")[],
+  termWidth: number,
+  theme: DashboardTheme,
+  B: (s: string) => string,
+): string[] {
+  if (rows.length === 0) return [];
+  const lines: string[] = [];
+
+  let activeHeaders = [...headers];
+  let activeRows = rows.map((r) => [...r]);
+  let activeAlignments = [...alignments];
+
+  const pad = "  ";
+  const indent = "  ";
+
+  function calcColW(hdrs: string[], rws: string[][]): number[] {
+    return hdrs.map((h, i) =>
+      Math.max(visibleWidth(h), ...rws.map((r) => visibleWidth(r[i] ?? ""))),
+    );
+  }
+
+  let colW = calcColW(activeHeaders, activeRows);
+  const totalW = () =>
+    colW.reduce((a, b) => a + b, 0) + pad.length * (colW.length - 1) + indent.length;
+
+  // 1. Shrink last column (Model) down to 6 if needed
+  if (totalW() > termWidth && colW.length > 0) {
+    const lastIdx = colW.length - 1;
+    const excess = totalW() - termWidth;
+    colW[lastIdx] = Math.max(6, colW[lastIdx]! - excess);
+  }
+
+  // 2. Shrink first column (When/Date) down to 10 if still needed
+  if (totalW() > termWidth && colW.length > 1) {
+    const excess = totalW() - termWidth;
+    colW[0] = Math.max(10, colW[0]! - excess);
+  }
+
+  // 3. Drop rightmost columns progressively until table fits within termWidth
+  while (totalW() > termWidth && activeHeaders.length > 2) {
+    activeHeaders.pop();
+    activeRows.forEach((r) => r.pop());
+    activeAlignments.pop();
+    colW = calcColW(activeHeaders, activeRows);
+    if (totalW() > termWidth && colW.length > 0) {
+      const lastIdx = colW.length - 1;
+      const excess = totalW() - termWidth;
+      colW[lastIdx] = Math.max(4, colW[lastIdx]! - excess);
+    }
+  }
+
+  const hdr = `${indent}${activeHeaders.map((h, i) => alignCell(h, colW[i]!)).join(pad)}`;
+  const sepW = Math.max(0, Math.min(termWidth - indent.length, visibleWidth(hdr) - indent.length));
+
+  lines.push(truncateToWidth(theme.fg("dim", hdr), termWidth));
+  lines.push(truncateToWidth(B(`${indent}${"─".repeat(sepW)}`), termWidth));
+
+  for (const row of activeRows) {
+    const cells = row.map((c, i) => alignCell(c, colW[i]!, activeAlignments[i] ?? "left"));
+    lines.push(truncateToWidth(`${indent}${cells.join(pad)}`, termWidth));
+  }
+
+  return lines;
+}
+
 function buildDashboard(
   state: SessionState,
   ctx: ExtensionContext,
@@ -202,7 +270,12 @@ function buildDashboard(
   // ── Turns Table ──
   if (state.turns.length > 0) {
     lines.push("");
-    lines.push(`  ${theme.bold(theme.fg("accent", `TURNS  (${state.turns.length})`))}`);
+    lines.push(
+      truncateToWidth(
+        `  ${theme.bold(theme.fg("accent", `TURNS  (${state.turns.length})`))}`,
+        termWidth,
+      ),
+    );
 
     const headers = ["#", "Input", "Output", "Time", "TPS", "Cost", "Model"];
     const rows = state.turns.map((t, i) => [
@@ -214,29 +287,24 @@ function buildDashboard(
       `$${t.cost.toFixed(2)}`,
       t.model,
     ]);
-
-    const colW = headers.map((h, i) =>
-      Math.max(visibleWidth(h), ...rows.map((r) => visibleWidth(r[i]))),
-    );
-    const tableW = colW.reduce((a, b) => a + b, 0) + 2 * (colW.length - 1) + 2;
-    if (tableW > termWidth && colW[colW.length - 1]! > 10) {
-      colW[colW.length - 1] = Math.max(10, colW[colW.length - 1]! - (tableW - termWidth));
-    }
-
-    const pad = "  ";
-    const hdr = `  ${headers.map((h, i) => alignCell(h, colW[i]!)).join(pad)}`;
-    lines.push(theme.fg("dim", hdr));
-    lines.push(B(`  ${"─".repeat(visibleWidth(hdr) - 2)}`));
-    for (const row of rows) {
-      const cells = row.map((c, i) => alignCell(c, colW[i]!, i === 0 || i >= 3 ? "left" : "right"));
-      lines.push(`  ${cells.join(pad)}`);
-    }
+    const alignments: ("left" | "right")[] = [
+      "left",
+      "right",
+      "right",
+      "left",
+      "left",
+      "left",
+      "left",
+    ];
+    lines.push(...renderTable(headers, rows, alignments, termWidth, theme, B));
   }
 
   // ── History Table ──
   if (history.length > 0) {
     lines.push("");
-    lines.push(`  ${theme.bold(theme.fg("accent", "LAST 10 SESSIONS"))}`);
+    lines.push(
+      truncateToWidth(`  ${theme.bold(theme.fg("accent", "LAST 10 SESSIONS"))}`, termWidth),
+    );
 
     const headers = ["When", "Duration", "Turns", "Input", "Output", "Cost", "Model"];
     const rows = history
@@ -259,26 +327,19 @@ function buildDashboard(
           h.model,
         ];
       });
-
-    const colW = headers.map((h, i) =>
-      Math.max(visibleWidth(h), ...rows.map((r) => visibleWidth(r[i]))),
-    );
-    const tableW = colW.reduce((a, b) => a + b, 0) + 2 * (colW.length - 1) + 2;
-    if (tableW > termWidth && colW[colW.length - 1]! > 10) {
-      colW[colW.length - 1] = Math.max(10, colW[colW.length - 1]! - (tableW - termWidth));
-    }
-
-    const pad = "  ";
-    const hdr = `  ${headers.map((h, i) => alignCell(h, colW[i]!)).join(pad)}`;
-    lines.push(theme.fg("dim", hdr));
-    lines.push(B(`  ${"─".repeat(visibleWidth(hdr) - 2)}`));
-    for (const row of rows) {
-      const cells = row.map((c, i) => alignCell(c, colW[i]!, i === 0 || i >= 2 ? "left" : "right"));
-      lines.push(`  ${cells.join(pad)}`);
-    }
+    const alignments: ("left" | "right")[] = [
+      "left",
+      "right",
+      "left",
+      "left",
+      "left",
+      "left",
+      "left",
+    ];
+    lines.push(...renderTable(headers, rows, alignments, termWidth, theme, B));
   }
 
-  return lines;
+  return lines.map((line) => truncateToWidth(line, termWidth));
 }
 
 /* ───── Extension ───── */
@@ -612,15 +673,16 @@ export default function (pi: ExtensionAPI) {
               return cachedLines;
             }
 
-            cachedLines = buildDashboard(state, ctx, branch, history, width, theme);
+            const rawLines = buildDashboard(state, ctx, branch, history, width, theme);
 
             // Add hint at bottom
             const hint = theme.fg("dim", "Press ESC or Enter to close");
             const hintVisible = visibleWidth(hint);
             const pad = Math.max(0, width - hintVisible);
-            cachedLines.push("");
-            cachedLines.push(hint + " ".repeat(pad));
+            rawLines.push("");
+            rawLines.push(truncateToWidth(hint + (pad > 0 ? " ".repeat(pad) : ""), width));
 
+            cachedLines = rawLines.map((line) => truncateToWidth(line, width));
             cachedWidth = width;
             return cachedLines;
           },
